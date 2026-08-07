@@ -7,6 +7,7 @@
  
 // 문자 장치의 이름
 #define CHAR_DEV_NAME               ("char_device")
+#define CHAR_DEV_CLASS_NAME         ("char_test_class")
  
 // 생성한 문자 장치의 Major 번호
 static int major;
@@ -15,8 +16,8 @@ static struct file_operations fops ={
     .owner = THIS_MODULE,
 };
 
-static struct class * test_class;
-static struct device * test_device;
+static struct class * chr_test_class;
+static struct device * chr_test_device;
  
 static int __init initModule(void){
     int ret = 0;
@@ -36,22 +37,22 @@ static int __init initModule(void){
     printk("[%s] Major : %d\n", CHAR_DEV_NAME,major);
     
     // /sys/class에 test_class 폴더 생성
-    test_class = class_create("test_class");
-    if(IS_ERR(test_class)){
+    chr_test_class = class_create(CHAR_DEV_CLASS_NAME);
+    if(IS_ERR(chr_test_class)){
         printk("[%s] Error : class_create()\n", CHAR_DEV_NAME);
 
-        ret = PTR_ERR(test_class);
+        ret = PTR_ERR(chr_test_class);
         goto err_class;
     }
 
     // 정상적으로 /sys/class/test_class 폴더 생성
-    printk("[%s] test_class folder is created in /sys/class\n", CHAR_DEV_NAME);
-    
-    test_device = device_create(test_class,NULL,MKDEV(major,0),NULL,CHAR_DEV_NAME);
-    if(IS_ERR(test_device)){
+    printk("[%s] %s folder is created in /sys/class\n", CHAR_DEV_NAME, CHAR_DEV_CLASS_NAME);
+
+    chr_test_device = device_create(chr_test_class,NULL,MKDEV(major,0),NULL,CHAR_DEV_NAME);
+    if(IS_ERR(chr_test_device)){
         printk("[%s] Error : device_create()\n", CHAR_DEV_NAME);
 
-        ret = PTR_ERR(test_device);
+        ret = PTR_ERR(chr_test_device);
         goto err_device;
     }
 
@@ -62,7 +63,7 @@ static int __init initModule(void){
 
 err_device:
     //test class 해제
-    class_destroy(test_class);
+    class_destroy(chr_test_class);
 err_class:
     // 생성된 문자 장치를 해제
     unregister_chrdev(major, CHAR_DEV_NAME);
@@ -72,9 +73,9 @@ err_chrdev:
  
 static void __exit exitModule(void){
     //test device 해제
-    device_destroy(test_class,MKDEV(major,0));
+    device_destroy(chr_test_class,MKDEV(major,0));
     //test class 해제
-    class_destroy(test_class);
+    class_destroy(chr_test_class);
     // 생성된 문자 장치를 해제
     unregister_chrdev(major, CHAR_DEV_NAME);
  

@@ -1,0 +1,129 @@
+# Character Device
+
+## 목적
+
+이 예제는 Linux 커널 모듈에서 문자 장치(character device)를 등록하고 해제하는 기본 과정을 학습하기 위한 코드이다. 문자 장치를 포함한 장치 파일은 Major 번호로 드라이버를 식별하고 Minor 번호로 해당 드라이버가 관리하는 장치를 구분한다.[^device-numbers]
+
+## Character Device란?
+
+Character Device는 데이터를 고정 크기의 블록이 아닌 **바이트 단위의 흐름**으로 다루는 장치이다. 터미널, 시리얼 포트, 키보드와 같은 장치가 대표적인 예이며, 일반적으로 `/dev` 아래의 장치 파일을 통해 사용자 공간에 노출된다.
+
+사용자 프로그램이 장치 파일에 파일 연산을 요청하면 VFS(Virtual File System)는 드라이버가 `struct file_operations`에 등록한 콜백으로 요청을 전달한다.[^vfs] 따라서 사용자 공간에서는 일반 파일과 비슷한 인터페이스로 장치에 접근할 수 있지만, 실제 동작은 드라이버와 하드웨어의 특성에 따라 결정된다.
+
+| 구분 | Character Device | Block Device |
+| --- | --- | --- |
+| 데이터 처리 단위 | 바이트 또는 데이터 스트림 | 고정 크기 블록 또는 섹터 |
+| 일반적인 접근 방식 | 순차 접근 | 임의 위치 접근 |
+| 커널 I/O 계층 | 요청을 장치 드라이버의 파일 연산으로 전달 | Block I/O 계층에서 요청을 큐잉하고 처리 |
+| 대표적인 예 | 터미널, 시리얼 포트, 키보드 | HDD, SSD, eMMC |
+
+### 버퍼와 캐시
+
+Character Device가 **항상 버퍼 없이 데이터를 즉시 교환하는 것은 아니다**. 블록 장치처럼 Block I/O 계층과 블록 단위 캐시를 기본 전제로 하지 않는다는 의미에 가깝다. 필요하다면 문자 장치 드라이버나 하드웨어가 자체 버퍼, FIFO 또는 링 버퍼를 사용할 수 있다. 실제 버퍼링 방식은 장치와 드라이버 구현에 따라 달라진다.[^char-buffer]
+
+### 순차 접근과 랜덤 접근
+
+Character Device는 터미널이나 시리얼 포트처럼 순차적으로 데이터가 흐르는 장치에 주로 사용되므로 일반적으로 임의 위치 접근을 지원하지 않는다. 그러나 이것은 절대적인 제한이 아니다. 장치에 위치 개념이 있고 드라이버가 `file_operations`의 `llseek` 동작을 제공한다면 위치 이동을 지원할 수 있다.[^vfs] 반대로 위치 개념이 없는 장치는 현재 위치를 옮기는 동작에 의미가 없다.
+
+모듈을 적재하면 커널로부터 Major 번호를 동적으로 할당받고, 장치 클래스와 장치 파일을 생성한다. Linux Driver Core에서는 장치를 `struct device`로 표현하며, 클래스와 장치 등록 정보를 sysfs에 노출한다.[^driver-core]
+
+- 장치 이름: `char_device`
+- 장치 클래스: `/sys/class/char_test_class`
+- 장치 파일: `/dev/char_device`
+- Minor 번호: `0`
+
+## 동작 과정
+
+모듈을 적재할 때 `initModule()`이 다음 순서로 실행된다.
+
+1. `register_chrdev()`로 문자 장치를 등록한다.
+2. `class_create()`로 `/sys/class/char_test_class` 클래스를 생성한다.
+3. `device_create()`로 `/dev/char_device` 장치 파일을 생성한다.
+
+모듈 초기화 도중 오류가 발생하면 이미 생성된 자원을 역순으로 해제한다.
+
+모듈을 제거할 때는 `exitModule()`이 다음 순서로 자원을 정리한다.
+
+1. `device_destroy()`로 장치를 제거한다.
+2. `class_destroy()`로 장치 클래스를 제거한다.
+3. `unregister_chrdev()`로 문자 장치 등록을 해제한다.
+
+## 주요 함수와 매크로
+
+### `register_chrdev()`
+
+문자 장치를 커널에 등록한다. Major 번호로 `0`을 전달하면 커널이 사용 가능한 번호를 동적으로 할당하며, 성공하면 할당된 Major 번호를 반환한다.[^char-source]
+
+### `unregister_chrdev()`
+
+등록된 문자 장치를 커널에서 해제한다. 모듈 초기화 실패 시와 모듈 제거 시 호출된다.
+
+### `class_create()`
+
+장치 클래스를 생성한다. 이 예제에서는 `CHAR_DEV_CLASS_NAME`에 정의된 이름을 사용하여 `/sys/class/char_test_class`가 생성된다. 생성된 클래스는 이후 `device_create()`에 전달한다.[^driver-core]
+
+### `class_destroy()`
+
+`class_create()`로 생성한 장치 클래스를 제거한다.
+
+### `device_create()`
+
+Major 번호와 Minor 번호를 조합한 장치 번호를 사용하여 장치를 생성한다. 이 함수는 장치를 해당 클래스에 등록하고 sysfs에 장치 정보를 만든다.[^driver-core] 사용자 공간에서는 `/dev/char_device`를 통해 장치에 접근할 수 있다.
+
+### `device_destroy()`
+
+`device_create()`로 생성한 장치를 제거한다.
+
+### `MKDEV()`
+
+Major 번호와 Minor 번호를 하나의 장치 번호인 `dev_t` 값으로 조합한다.
+
+### `IS_ERR()`와 `PTR_ERR()`
+
+`class_create()`와 `device_create()`가 반환한 포인터의 오류 여부를 확인하고, 오류 포인터에서 실제 오류 코드를 가져온다.
+
+### `module_init()`와 `module_exit()`
+
+모듈을 적재할 때 실행할 초기화 함수와 모듈을 제거할 때 실행할 종료 함수를 커널에 등록한다.
+
+## 빌드 및 실행
+
+```bash
+make
+sudo insmod build/char_device.ko
+```
+
+커널 로그와 생성된 장치를 확인한다.
+
+```bash
+sudo dmesg | tail
+ls -l /dev/char_device
+ls -l /sys/class/char_test_class
+```
+
+모듈을 제거하고 빌드 결과를 정리한다.
+
+```bash
+sudo rmmod char_device
+make clean
+```
+
+## Linux 공식 문서
+
+- [Linux Device Drivers Infrastructure](https://docs.kernel.org/driver-api/infrastructure.html): `struct device`, `class_create()`, `device_create()`와 Driver Core의 장치 관리 API
+- [Overview of the Linux Virtual File System](https://docs.kernel.org/filesystems/vfs.html): 장치 파일을 사용자 공간의 파일 연산과 연결하는 VFS 및 `struct file_operations`
+- [Multi-Queue Block IO Queueing Mechanism](https://docs.kernel.org/block/blk-mq.html): 블록 장치 요청이 Block I/O 계층에서 큐잉되고 처리되는 구조
+- [Industrial I/O Device Buffers](https://docs.kernel.org/iio/iio_devbuf.html): 문자 장치에서도 드라이버 특성에 따라 버퍼를 사용할 수 있는 실제 사례
+- [Linux Allocated Devices](https://docs.kernel.org/admin-guide/devices.html): 문자·블록 장치의 Major 번호와 Minor 번호 할당 체계
+- [Building External Modules](https://docs.kernel.org/kbuild/modules.html): 외부 커널 모듈의 Kbuild 파일 작성법과 빌드 방법
+- [Linux Kernel Source: `fs/char_dev.c`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/char_dev.c): `register_chrdev()`와 문자 장치 등록 코드의 실제 구현
+
+[^device-numbers]: Linux Kernel 공식 문서의 [Linux Allocated Devices](https://docs.kernel.org/admin-guide/devices.html) 참고.
+
+[^vfs]: Linux Kernel 공식 문서의 [Overview of the Linux Virtual File System](https://docs.kernel.org/filesystems/vfs.html) 중 `struct file_operations` 설명 참고.
+
+[^char-buffer]: Linux Kernel 공식 문서의 [Industrial I/O Device Buffers](https://docs.kernel.org/iio/iio_devbuf.html)는 문자 장치가 자체 버퍼를 사용하는 실제 사례를 설명한다.
+
+[^driver-core]: Linux Kernel 공식 문서의 [Device Drivers Infrastructure](https://docs.kernel.org/driver-api/infrastructure.html) 참고.
+
+[^char-source]: Linux Kernel 공식 소스의 [`fs/char_dev.c`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/fs/char_dev.c) 참고.
