@@ -6,7 +6,7 @@
 #include <linux/err.h>
  
 // 문자 장치의 이름
-#define CHAR_DEV_NAME               ("test_device")
+#define CHAR_DEV_NAME               ("char_device")
  
 // 생성한 문자 장치의 Major 번호
 static int major;
@@ -25,38 +25,38 @@ static int __init initModule(void){
     major = register_chrdev(0, CHAR_DEV_NAME, &fops);
     // 문자 장치 생성시 에러가 발생한 경우
     if(major < 0){
-        printk("[test_device] Error : register_chrdev()\n");
+        printk("[%s] Error : register_chrdev()\n", CHAR_DEV_NAME);
 
         ret = major;
         goto err_chrdev;
     }
 
     // 정상적으로 문자 장치 생성됨을 알림 및 major 번호 확인
-    printk("[test_device] Success to init char device module\n");
-    printk("[test_device] Major : %d\n",major);
+    printk("[%s] Success to init char device module\n", CHAR_DEV_NAME);
+    printk("[%s] Major : %d\n", CHAR_DEV_NAME,major);
     
     // /sys/class에 test_class 폴더 생성
     test_class = class_create("test_class");
     if(IS_ERR(test_class)){
-        printk("[test_device] Error : class_create()\n");
+        printk("[%s] Error : class_create()\n", CHAR_DEV_NAME);
 
         ret = PTR_ERR(test_class);
         goto err_class;
     }
 
     // 정상적으로 /sys/class/test_class 폴더 생성
-    printk("[test_device] test_class folder is created in /sys/class\n");
+    printk("[%s] test_class folder is created in /sys/class\n", CHAR_DEV_NAME);
     
     test_device = device_create(test_class,NULL,MKDEV(major,0),NULL,CHAR_DEV_NAME);
     if(IS_ERR(test_device)){
-        printk("[test_device] Error : device_create()\n");
+        printk("[%s] Error : device_create()\n", CHAR_DEV_NAME);
 
         ret = PTR_ERR(test_device);
         goto err_device;
     }
 
     // 정상적으로 /dev/testDevice 생성
-    printk("[test_device] %s is created in /dev\n", CHAR_DEV_NAME);
+    printk("[%s] %s is created in /dev\n", CHAR_DEV_NAME, CHAR_DEV_NAME);
 
     return 0;
 
@@ -78,7 +78,7 @@ static void __exit exitModule(void){
     // 생성된 문자 장치를 해제
     unregister_chrdev(major, CHAR_DEV_NAME);
  
-    printk("[test_device] exit module\n");
+    printk("[%s] exit module\n", CHAR_DEV_NAME);
 }
  
 module_init(initModule);
