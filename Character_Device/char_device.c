@@ -6,14 +6,33 @@
 #include <linux/err.h>
  
 // 문자 장치의 이름
-#define CHAR_DEV_NAME               ("char_device")
+#define CHAR_DEV_NAME               ("char_test_device")
 #define CHAR_DEV_CLASS_NAME         ("char_test_class")
+
+// 문자 장치 관련 콜백 함수
+
+// 문자 장치가 open() 호출 시 수행되는 함수
+static int charDeviceOpen(struct inode *device_inode, struct file *device_file)
+{
+    printk("[%s] device opened\n", CHAR_DEV_NAME);
+    return 0;
+}
+
+// 문자 장치가 close() 호출 시 수행되는 함수
+static int charDeviceRelease(struct inode *device_inode, struct file *device_file)
+{
+    printk("[%s] device closed\n", CHAR_DEV_NAME);
+    return 0;
+}
  
 // 생성한 문자 장치의 Major 번호
 static int major;
 // 생성한 문자 장치을 제어하기 위한 함수를 관리하는 구조체
+// 관련 맴버 함수들은 https://elixir.bootlin.com/linux/v6.18.39/source/include/linux/fs.h#L2271 에서 참고
 static struct file_operations fops ={
     .owner = THIS_MODULE,
+    .open = charDeviceOpen,
+    .release = charDeviceRelease,
 };
 
 static struct class * chr_test_class;
@@ -27,7 +46,7 @@ static int __init initModule(void){
     // 문자 장치 생성시 에러가 발생한 경우
     if(major < 0){
         printk("[%s] Error : register_chrdev()\n", CHAR_DEV_NAME);
-
+        
         ret = major;
         goto err_chrdev;
     }
@@ -78,7 +97,7 @@ static void __exit exitModule(void){
     class_destroy(chr_test_class);
     // 생성된 문자 장치를 해제
     unregister_chrdev(major, CHAR_DEV_NAME);
- 
+    
     printk("[%s] exit module\n", CHAR_DEV_NAME);
 }
  
