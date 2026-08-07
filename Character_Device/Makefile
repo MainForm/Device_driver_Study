@@ -5,7 +5,7 @@ BUILD_DIR  := $(CURDIR)/build
 
 all:
 	mkdir -p $(BUILD_DIR)
-	cp firstModule.c Kbuild $(BUILD_DIR)
+	cp char_device.c Kbuild $(BUILD_DIR)
 	$(MAKE) -C $(KERNEL_DIR) M=$(BUILD_DIR) modules
 
 clean:
