@@ -27,10 +27,14 @@ Character Device는 터미널이나 시리얼 포트처럼 순차적으로 데�
 
 모듈을 적재하면 커널로부터 Major 번호를 동적으로 할당받고, 장치 클래스와 장치 파일을 생성한다. Linux Driver Core에서는 장치를 `struct device`로 표현하며, 클래스와 장치 등록 정보를 sysfs에 노출한다.[^driver-core]
 
-- 장치 이름: `char_device`
+- 장치 이름: `char_test_device`
 - 장치 클래스: `/sys/class/char_test_class`
-- 장치 파일: `/dev/char_device`
+- 장치 파일: `/dev/char_test_device`
 - Minor 번호: `0`
+
+### 여러 번 열기
+
+이 Character Device는 같은 장치 파일을 여러 번 `open()`할 수 있다. 드라이버의 `open` 콜백에는 이미 열린 파일이 있는지 검사하거나 추가 열기를 거부하는 로직이 없으므로, 각 `open()` 호출은 독립된 파일 디스크립터와 `struct file`을 만든다. 각 `struct file`은 서로 다른 접근 모드와 상태를 가질 수 있지만, 모두 같은 장치 파일의 inode를 가리킨다.
 
 ## 동작 과정
 
@@ -86,6 +90,30 @@ Major 번호와 Minor 번호를 하나의 장치 번호인 `dev_t` 값으로 조
 
 모듈을 적재할 때 실행할 초기화 함수와 모듈을 제거할 때 실행할 종료 함수를 커널에 등록한다.
 
+## Example
+
+[`char_open_test.c`](./char_open_test.c)는 `/dev/char_test_device`를 여러 방식으로 열어 드라이버의 `open` 및 `release` 콜백 동작을 확인하는 사용자 공간 테스트 프로그램이다.
+
+### 예제 1: 접근 모드 비교
+
+장치를 먼저 `O_RDWR`로 열고 닫은 뒤 다시 `O_RDONLY`로 연다. 이 예제를 통해 사용자 공간의 `open()`에 전달한 접근 모드가 드라이버에서 다음과 같이 표현되는 것을 확인할 수 있다.
+
+- `struct file`의 `f_flags`: `open()`에 전달된 플래그
+- `struct file`의 `f_mode`: 커널이 관리하는 읽기 및 쓰기 가능 여부
+
+각 호출 사이에 대기 시간이 있으므로 `dmesg`에서 두 접근 모드에 따른 커널 로그를 구분해 볼 수 있다.
+
+### 예제 2: 같은 장치를 동시에 두 번 열기
+
+같은 장치를 `O_RDWR`와 `O_RDONLY`로 각각 열고 두 파일 디스크립터를 동시에 유지한다. 이 예제의 목적은 Character Device를 여러 번 열 수 있으며, 각 `open()`이 서로 다른 파일 디스크립터와 `struct file`을 생성하는 것을 확인하는 것이다. 두 열린 파일은 독립된 접근 모드를 가지지만 같은 장치 노드의 inode를 가리킨다. 또한 두 번째 파일 디스크립터부터 닫으면서 드라이버의 `release` 콜백이 각 열린 파일마다 호출되는 것도 확인할 수 있다.
+
+테스트 프로그램은 `make`를 실행할 때 모듈과 함께 `build/char_open_test`로 빌드된다. 모듈을 적재한 후 다음과 같이 실행하고, 다른 터미널에서 커널 로그를 확인한다.
+
+```bash
+sudo ./build/char_open_test
+sudo dmesg -w
+```
+
 ## 빌드 및 실행
 
 ```bash
@@ -97,7 +125,7 @@ sudo insmod build/char_device.ko
 
 ```bash
 sudo dmesg | tail
-ls -l /dev/char_device
+ls -l /dev/char_test_device
 ls -l /sys/class/char_test_class
 ```
 
