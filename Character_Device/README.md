@@ -114,6 +114,38 @@ sudo ./build/char_open_test
 sudo dmesg -w
 ```
 
+### 예제 3: 문자 장치에 데이터 쓰기
+
+[`char_read_write_test.c`](./char_read_write_test.c)는 `/dev/char_test_device`를 `O_WRONLY`로 열고 `write()`를 두 번 호출한다.
+
+```c
+write(fd, "0123456789", 10);
+write(fd, "ABCDEFGHIJ", 10);
+```
+
+첫 번째 `write()`는 장치 버퍼의 offset `0`부터 10바이트를 저장하고, 성공하면 offset이 `10`으로 이동한다. 두 번째 `write()`는 변경된 offset부터 이어서 10바이트를 저장한다. 따라서 두 호출이 모두 성공하면 32바이트 장치 버퍼에는 총 20바이트의 데이터가 다음과 같이 저장된다.
+
+```text
+0123456789ABCDEFGHIJ
+```
+
+이 예제를 통해 다음 동작을 확인할 수 있다.
+
+- 사용자 공간의 `write()`가 드라이버의 `charDeviceWrite()` 콜백을 호출하는 과정
+- `copy_from_user()`를 사용해 사용자 공간의 데이터를 커널 버퍼로 복사하는 과정
+- 요청한 크기와 장치 버퍼의 남은 공간을 비교하여 실제 쓰기 크기를 정하는 방법
+- 성공적으로 쓴 바이트 수만큼 offset과 `data_size`가 증가하는 동작
+- 콜백이 반환한 실제 쓰기 크기가 사용자 공간 `write()`의 반환값으로 전달되는 과정
+
+테스트 프로그램은 `make`를 실행할 때 `build/char_read_write_test`로 빌드된다. 모듈을 적재한 후 다음과 같이 실행하고 커널 로그에서 쓰기 크기, offset 및 저장된 데이터를 확인한다.
+
+```bash
+sudo ./build/char_read_write_test
+sudo dmesg -w
+```
+
+`charDeviceWrite()`와 `charDeviceRead()`의 자세한 처리 과정은 [`docs/read_write.md`](./docs/read_write.md)에서 확인할 수 있다.
+
 ## 빌드 및 실행
 
 ```bash

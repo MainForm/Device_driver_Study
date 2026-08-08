@@ -9,8 +9,11 @@ all:
 	cp char_device.c Kbuild $(BUILD_DIR)
 	$(MAKE) -C $(KERNEL_DIR) M=$(BUILD_DIR) modules
 
-	echo "Building the test program..."
+	echo "Building the character device open test program..."
 	gcc -o $(BUILD_DIR)/char_open_test char_open_test.c
+
+	echo "Building the character device read/write test program..."
+	gcc -o $(BUILD_DIR)/char_read_write_test char_read_write_test.c
 
 clean:
 	$(RM) -r -- $(BUILD_DIR)
