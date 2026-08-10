@@ -6,7 +6,11 @@
 
 #include <linux/device.h>
 #include <linux/err.h>
- 
+
+#include <linux/types.h>
+
+#include "char_ioctl.h"
+
 // 문자 장치의 이름
 #define CHAR_DEV_NAME               ("char_test_device")
 #define CHAR_DEV_CLASS_NAME         ("char_test_class")
@@ -23,6 +27,9 @@ static struct device * chr_test_device;
 // 정적 메모리 사용
 static char device_buffer[CHAR_BUFFER_SIZE];
 static size_t data_size = 0;
+
+// IOCTL 테스트 모드
+static __u32 ioctl_mode = CHAR_IOCTL_MODE0;
 
 // ------------------------------------------------------------
 // 문자 장치 관련 콜백 함수
@@ -220,6 +227,88 @@ static ssize_t charDeviceRead(struct file *device_file, char __user *buffer, siz
     return read_size;
 }
 
+/*
+ * 사용자 공간에서 요청한 명령을 수행한다.
+ * device
+ */
+static long charDeviceIOCTL(struct file *device_file, unsigned int command, unsigned long argument){
+    // file 구조체를 사용하지 않음
+
+    printk("----device ioctl----\n");
+    pr_info("ioctl type : %c\n", _IOC_TYPE(command));
+
+    switch(command){
+        case CHAR_IOCTL_CLEAR:          // _IO(CHAR_IOCTL_MAGIC, 0)
+            pr_info("ioctl command : CHAR_IOCTL_CLEAR\n");
+
+            // 데이터 길이를 0으로 설정
+            data_size = 0;
+
+            // 파일 offset를 0으로 설정
+            device_file->f_pos = 0;
+            
+            return 0;
+        case CHAR_IOCTL_SET_MODE:       // _IOW(CHAR_IOCTL_MAGIC, 1, __u32)
+            pr_info("ioctl command : CHAR_IOCTL_SET_MODE\n");
+
+            // 사용자 공간에서 전달한 ioctl_mode 값을 커널 공간으로 복사
+            if(copy_from_user(&ioctl_mode, (const void __user *)argument, sizeof(__u32))){
+                pr_err("copy_from_user() failed\n");
+                return -EFAULT;
+            }
+
+            pr_info("current ioctl_mode : 0x%x\n", ioctl_mode);
+
+            return 0;
+        case CHAR_IOCTL_GET_MODE:       // _IOR(CHAR_IOCTL_MAGIC, 2, __u32)
+            pr_info("ioctl command : CHAR_IOCTL_GET_MODE\n");
+
+            // 커널 공간의 ioctl_mode 값을 사용자 공간으로 복사
+            if(copy_to_user((void __user *)argument, &ioctl_mode, sizeof(__u32))){
+                pr_err("copy_to_user() failed\n");
+                return -EFAULT;
+            }
+
+            pr_info("current ioctl_mode : 0x%x\n", ioctl_mode);
+
+            return 0;
+        case CHAR_IOCTL_SWAP_MODE:      // _IOWR(CHAR_IOCTL_MAGIC, 3, __u32)
+            pr_info("ioctl command : CHAR_IOCTL_SWAP_MODE\n");
+
+            __u32 request_mode = 0;
+            __u32 prev_ioctl_mode = ioctl_mode;
+
+            // 사용자 공간에서 전달한 ioctl_mode 값을 커널 공간으로 복사
+            if(copy_from_user(&request_mode, (const void __user *)argument, sizeof(__u32))){
+                pr_err("copy_from_user() failed\n");
+                return -EFAULT;
+            }
+
+            pr_info("----before swap----\n");
+            pr_info("current ioctl_mode : 0x%x\n", ioctl_mode);
+
+            prev_ioctl_mode = ioctl_mode;
+            ioctl_mode = request_mode;
+
+            // 커널 공간의 ioctl_mode 값을 사용자 공간으로 복사
+            if(copy_to_user((void __user *)argument, &prev_ioctl_mode, sizeof(__u32))){
+                pr_err("copy_to_user() failed\n");
+                return -EFAULT;
+            }
+
+            pr_info("----after swap----\n");
+            pr_info("current ioctl_mode : 0x%x\n", ioctl_mode);
+
+            return 0;
+        default:
+            pr_err("invalid ioctl command : 0x%x\n", command);
+            return -EINVAL;
+    }
+
+    return 0;
+}
+
+
 // 생성한 문자 장치을 제어하기 위한 함수를 관리하는 구조체
 // 관련 맴버 함수들은 https://elixir.bootlin.com/linux/v6.18.39/source/include/linux/fs.h#L2271 에서 참고
 static struct file_operations fops ={
@@ -228,8 +317,9 @@ static struct file_operations fops ={
     .release = charDeviceRelease,
     .write = charDeviceWrite,
     .read = charDeviceRead,
+    .unlocked_ioctl = charDeviceIOCTL,
 };
- 
+
 static int __init initModule(void){
     int ret = 0;
 

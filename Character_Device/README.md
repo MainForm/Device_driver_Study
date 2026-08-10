@@ -2,7 +2,7 @@
 
 ## 목적
 
-이 예제는 Linux 커널 모듈에서 문자 장치(character device)를 등록하고 해제하는 기본 과정을 학습하기 위한 코드이다. 문자 장치를 포함한 장치 파일은 Major 번호로 드라이버를 식별하고 Minor 번호로 해당 드라이버가 관리하는 장치를 구분한다.[^device-numbers]
+이 예제는 Linux 커널 모듈에서 문자 장치(character device)를 등록하고 해제하는 기본 과정을 학습하기 위한 코드이다. `open()`, `read()`, `write()`, `ioctl()`을 사용해 사용자 공간의 파일 연산이 드라이버의 `file_operations` 콜백으로 전달되는 과정을 확인한다. 문자 장치를 포함한 장치 파일은 Major 번호로 드라이버를 식별하고 Minor 번호로 해당 드라이버가 관리하는 장치를 구분한다.[^device-numbers]
 
 ## Character Device란?
 
@@ -145,6 +145,37 @@ sudo dmesg -w
 ```
 
 `charDeviceWrite()`와 `charDeviceRead()`의 자세한 처리 과정은 [`docs/read_write.md`](./docs/read_write.md)에서 확인할 수 있다.
+
+### 예제 4: `ioctl()`로 장치 제어
+
+[`char_ioctl_test.c`](./char_ioctl_test.c)는 `/dev/char_test_device`를 `O_RDWR`로 열고 `ioctl()` 명령으로 장치 버퍼와 모드를 제어한다. ioctl 명령은 드라이버와 사용자 프로그램이 공통으로 포함하는 [`char_ioctl.h`](./char_ioctl.h)에 정의되어 있다.
+
+| 명령 | 정의 | 데이터 방향 | 동작 |
+| --- | --- | --- | --- |
+| `CHAR_IOCTL_CLEAR` | `_IO` | 없음 | `data_size`와 호출한 열린 파일의 offset을 0으로 설정 |
+| `CHAR_IOCTL_SET_MODE` | `_IOW` | 사용자 → 커널 | 사용자가 전달한 모드를 장치에 저장 |
+| `CHAR_IOCTL_GET_MODE` | `_IOR` | 커널 → 사용자 | 현재 장치 모드를 사용자에게 전달 |
+| `CHAR_IOCTL_SWAP_MODE` | `_IOWR` | 사용자 ↔ 커널 | 새 모드를 저장하고 이전 모드를 반환 |
+
+`SET_MODE`, `GET_MODE`, `SWAP_MODE`는 고정 크기 타입인 `__u32`를 사용한다. 사용자 프로그램은 값을 담은 변수의 주소를 `ioctl()`에 전달하고, 드라이버는 `copy_from_user()`와 `copy_to_user()`로 커널 공간과 사용자 공간 사이의 데이터를 복사한다.
+
+```c
+__u32 mode = CHAR_IOCTL_MODE1;
+
+ioctl(fd, CHAR_IOCTL_SET_MODE, &mode);
+ioctl(fd, CHAR_IOCTL_GET_MODE, &mode);
+```
+
+`CHAR_IOCTL_CLEAR`는 장치가 공유하는 전역 `data_size`를 0으로 설정하면서 `ioctl()`을 호출한 `struct file`의 `f_pos`만 0으로 설정한다. 따라서 별도로 `open()`한 다른 열린 파일의 offset은 변경되지 않는다.
+
+테스트 프로그램은 `make`를 실행할 때 `build/char_ioctl_test`로 빌드된다. 모듈을 적재한 뒤 다음과 같이 실행한다.
+
+```bash
+sudo ./build/char_ioctl_test
+sudo dmesg -w
+```
+
+ioctl 명령 인코딩, `unlocked_ioctl` 콜백, 데이터 전달 방향과 각 명령의 자세한 처리 과정은 [`docs/ioctl.md`](./docs/ioctl.md)에서 확인할 수 있다.
 
 ## 빌드 및 실행
 
