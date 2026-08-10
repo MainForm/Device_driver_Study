@@ -1,6 +1,7 @@
 #include <stdio.h> 
 #include <unistd.h> // sleep(), close()
 #include <fcntl.h>  // open(), O_RDONLY, O_RDWR
+#include <string.h> // strlen()
 
 #include <stddef.h>
 
@@ -24,7 +25,9 @@ int main(void)
     {
         // write()는 문자 장치내 정상적으로 write된 바이트 수를 반환한다.
         // write()는 실제로는 커널의 file_operations 구조체의 write 콜백 함수를 호출한다.
-        ssize_t write_bytes = write(fd, "0123456789", 10);
+        const char number_data[] = "0123456789";
+        printf("user space data address(number_data) : %p\n", number_data);
+        ssize_t write_bytes = write(fd, number_data, strlen(number_data));
         
         // write()가 실패하면 -1을 반환
         if(write_bytes == -1){
@@ -33,7 +36,9 @@ int main(void)
             return 1;
         }
 
-        write_bytes = write(fd, "ABCDEFGHIJ", 10);
+        const char lower_alpha_data[] = "ABCDEFGHIJ";
+        printf("user space data address(lower_alpha_data) : %p\n", lower_alpha_data);
+        write_bytes = write(fd, lower_alpha_data, strlen(lower_alpha_data));
         
         // write()가 실패하면 -1을 반환
         if(write_bytes == -1){
@@ -59,6 +64,7 @@ int main(void)
         for(;;){
             // read()는 읽은 바이트 수를 반환하고, 더 이상 읽을 데이터가 없으면 0을 반환한다.
             // 즉, device 에서 file_operations 구조체의 read 콜백 함수의 return value를 얻는다.
+            printf("user space data address(read_buffer) : %p\n", read_buffer);
             read_bytes = read(fd, read_buffer, 4);
         
             if(read_bytes == -1){

@@ -30,6 +30,59 @@ static struct file_operations fops = {
 };
 ```
 
+## 사용자 공간 버퍼 주소 확인
+
+이번 예제에서는 사용자 프로그램이 `write()`와 `read()`에 전달한 버퍼 주소가
+드라이버 콜백의 `buffer` 인자로 그대로 전달되는지 로그로 확인한다.
+
+사용자 프로그램에서는 `%p`를 사용해 버퍼의 주소를 출력한다.
+
+```c
+const char number_data[] = "0123456789";
+
+printf("user space data address(number_data) : %p\n", number_data);
+write(fd, number_data, strlen(number_data));
+```
+
+드라이버의 `charDeviceWrite()`에서는 전달받은 사용자 공간 포인터를 `%px`로
+출력한다.
+
+```c
+pr_info("user space buffer address : %px\n", buffer);
+pr_info("kernel space device buffer : %px\n", device_buffer);
+```
+
+사용자 프로그램에서 출력한 `number_data`의 주소와 커널 로그의 `buffer` 주소를
+비교하면 같은 숫자값이 출력되는 것을 확인할 수 있다. 즉, `write()`에 전달한
+사용자 가상 주소가 시스템 콜과 VFS를 거쳐 드라이버의 `buffer` 인자로 전달된다.
+
+`read()`도 같은 방식으로 확인할 수 있다.
+
+```c
+printf("user space data address(read_buffer) : %p\n", read_buffer);
+read_bytes = read(fd, read_buffer, 4);
+```
+
+```c
+/* charDeviceRead() */
+pr_info("user space buffer address : %px\n", buffer);
+pr_info("kernel space device buffer : %px\n", device_buffer);
+```
+
+`read()`가 반복 호출되더라도 사용자 프로그램은 같은 `read_buffer`를 전달하므로
+각 호출에서 같은 주소가 출력된다. 반면 `device_buffer`는 드라이버가 가진 커널
+공간의 정적 배열이므로 사용자 버퍼와 다른 주소가 출력된다.
+
+여기서 두 로그의 주소가 같다는 것은 **사용자 가상 주소의 숫자값이 콜백까지
+전달되었다**는 의미이다. 사용자 공간과 커널 공간이 같은 메모리 영역을 직접
+공유하거나, 두 주소가 같은 물리 주소라는 의미는 아니다. 커널은 사용자 포인터를
+직접 역참조하지 않고 반드시 `copy_from_user()` 또는 `copy_to_user()`를 사용해야
+한다.
+
+커널의 `%px`는 실제 포인터 값을 노출하므로 이 예제처럼 주소 비교가 필요한
+디버깅 용도로만 사용한다. 일반적인 커널 로그에서는 포인터 값을 해시하여
+노출을 줄이는 `%p` 사용이 권장된다.
+
 ## `charDeviceWrite()` 처리 과정
 
 `charDeviceWrite()`는 사용자 공간에서 전달받은 데이터를 `device_buffer`에

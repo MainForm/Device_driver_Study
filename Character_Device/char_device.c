@@ -118,10 +118,12 @@ static ssize_t charDeviceWrite(struct file *device_file, const char __user *buff
     (void)device_file;
 
     printk("----device write----\n");
-
+    
     // 사용자 요청 크기와 쓰기를 시작할 현재 파일 위치를 확인한다.
     pr_info("count : %zu\n", count);
     pr_info("offset : %lld\n", (long long)*offset);
+    pr_info("user space buffer address : %px\n", buffer);
+    pr_info("kernel space device buffer : %px\n",device_buffer);
 
     // 음수 위치는 device_buffer의 유효한 인덱스가 될 수 없다.
     if(*offset < 0){
@@ -191,6 +193,8 @@ static ssize_t charDeviceRead(struct file *device_file, char __user *buffer, siz
     // 사용자 요청 크기와 읽기를 시작할 현재 파일 위치를 확인한다.
     pr_info("count : %zu\n", count);
     pr_info("offset : %lld\n", (long long)*offset);
+    pr_info("user space buffer address : %px\n", buffer);
+    pr_info("kernel space device buffer : %px\n",device_buffer);
 
     // 음수 위치는 device_buffer의 유효한 인덱스가 될 수 없다.
     if(*offset < 0){
