@@ -281,7 +281,7 @@ case CHAR_IOCTL_SWAP_MODE: {
 
 ## ioctl 모드 값
 
-[`char_ioctl_mode.h`](../char_ioctl_mode.h)에서 모드를 비트 플래그로
+[`char_ioctl.h`](../char_ioctl.h)에서 모드를 비트 플래그로
 정의한다.
 
 ```c

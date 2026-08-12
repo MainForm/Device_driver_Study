@@ -4,7 +4,9 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
-#include "char_ioctl_mode.h"
+#define CHAR_IOCTL_MODE0    (0x01u << 0)
+#define CHAR_IOCTL_MODE1    (0x01u << 1)
+#define CHAR_IOCTL_MODE2    (0x01u << 2)
 
 #define CHAR_IOCTL_MAGIC 'C'
 
